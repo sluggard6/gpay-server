@@ -1,0 +1,171 @@
+buildscript {
+    ext {
+        springBootVersion = '2.1.0.RELEASE'
+    }
+    repositories {
+	    maven {
+	        url "https://plugins.gradle.org/m2/"
+		}
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+    }
+}
+
+allprojects  {
+	
+    group = 'com.github.gpay.server'
+    version = '0.1.0-SNAPSHOT'
+    
+}
+
+subprojects {
+
+    apply plugin: 'java'
+	apply plugin: 'io.spring.dependency-management'
+	apply plugin: 'maven-publish'
+	
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+    
+    tasks.withType(JavaCompile) {
+		options.encoding = 'UTF-8'
+	}
+
+	task packageSources(type: Jar) {
+		classifier = 'sources'
+		from sourceSets.main.allSource
+	}
+	
+	repositories {
+    	//mavenLocal()
+    	maven { url "http://maven.elitex.io:81/nexus/content/groups/public/"}
+    	maven { url "http://maven.aliyun.com/nexus/content/groups/public"}
+    	maven { url "http://repo.maven.apache.org/maven2" }
+	}
+
+  
+	dependencies {
+		compileOnly 'org.projectlombok:lombok:1.18.2'
+	}
+	
+	task sourceJar(type: Jar) {
+	   from sourceSets.main.allJava
+	}
+	
+	//上传nexus
+	publishing {
+	    publications {
+	        mavenJava(MavenPublication) {
+	            from components.java
+	            
+	            artifact sourceJar {
+	                classifier "sources"
+	            }
+	        }
+	        
+	    }
+	    repositories {
+	       maven {
+	          url "http://maven.elitex.io:81/nexus/content/repositories/snapshots/"
+	         credentials {
+	         	username "$nexusUser"
+	       		password "$nexusPwd"
+	         } 
+	      }
+	   }
+	}
+
+}
+
+project(':gpay-portal'){
+
+	apply plugin: 'org.springframework.boot'
+
+	dependencies {
+		compile project(':gpay-service')
+		compile('org.springframework.boot:spring-boot-starter-web')
+        compile 'org.springframework.boot:spring-boot-starter-data-redis'
+	    compile 'io.springfox:springfox-swagger-ui:2.8.0'
+	    compile 'io.springfox:springfox-swagger2:2.8.0'
+		runtime('org.springframework.boot:spring-boot-devtools')
+	    testCompile 'org.springframework.boot:spring-boot-starter-test'
+	}
+}
+
+project(':gpay-service'){
+    dependencies {
+		compile project(':gpay-metadata')
+	}
+}
+
+
+/**
+ *  基础模块 包括 基本的dao层  mybatisGenerator自动生成框架等
+ *  数据源配置 redis等第三方工具集成配置
+ *  通用的方法 配置等
+ */
+
+project(':gpay-metadata'){
+	configurations {
+		mybatisGenerator  
+	}
+	
+	def getDbProperties = {  
+		def properties = new Properties()  
+        file("gpay-metadata/mybatisGenerator/db-mysql.properties").withInputStream { inputStream ->  
+            properties.load(inputStream)  
+        }  
+        println properties
+        properties;
+    }
+    
+    task mybatisGenerate << {  
+        def properties = getDbProperties()  
+        ant.properties['targetProject'] = projectDir.path  
+        ant.properties['driverClass'] = properties.getProperty("jdbc.driverClassName")  
+        ant.properties['connectionURL'] = properties.getProperty("jdbc.url")  
+        ant.properties['userId'] = properties.getProperty("jdbc.user")  
+        ant.properties['password'] = properties.getProperty("jdbc.pass")  
+        ant.properties['src_main_java'] = sourceSets.main.java.srcDirs[0].path  
+        ant.properties['src_main_resources'] = sourceSets.main.resources.srcDirs[0].path  
+        ant.properties['modelPackage'] = properties.getProperty("modelPackage")
+        ant.properties['mapperPackage'] = properties.getProperty("mapperPackage")
+        ant.properties['sqlMapperPackage'] = properties.getProperty("sqlMapperPackage")
+        ant.taskdef(
+                name: 'mbgenerator',  
+                classname: 'org.mybatis.generator.ant.GeneratorAntTask',  
+                classpath: configurations.mybatisGenerator.asPath  
+        )  
+        ant.mbgenerator(overwrite: true,  
+                configfile: '/Users/frank/git/gpay-server/gpay-metadata/mybatisGenerator/generatorConfig.xml', verbose: true) {  
+            propertyset {  
+                propertyref(name: 'targetProject')  
+                propertyref(name: 'userId')  
+                propertyref(name: 'driverClass')  
+                propertyref(name: 'connectionURL')  
+                propertyref(name: 'password')  
+                propertyref(name: 'src_main_java')  
+                propertyref(name: 'src_main_resources')  
+                propertyref(name: 'modelPackage')  
+                propertyref(name: 'mapperPackage')  
+                propertyref(name: 'sqlMapperPackage')  
+            }  
+        }
+    }  
+	
+	dependencies {
+		compile 'tk.mybatis:mapper-spring-boot-starter:2.0.4'
+		compile 'com.alibaba:fastjson:1.2.49'
+		//compile 'tk.mybatis:mapper:4.0.1'
+		compile 'org.mybatis.spring.boot:mybatis-spring-boot-starter:1.3.2'
+		compile 'com.github.pagehelper:pagehelper-spring-boot:1.2.5'
+        compile 'mysql:mysql-connector-java:5.1.34'
+		/** mybatisGenerator插件 */
+        mybatisGenerator 'org.mybatis.generator:mybatis-generator-core:1.3.2'  
+    	mybatisGenerator 'mysql:mysql-connector-java:5.1.36'  
+    	mybatisGenerator 'tk.mybatis:mapper:3.3.2' 
+	}
+}
